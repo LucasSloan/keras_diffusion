@@ -27,6 +27,7 @@ class SinusoidalPosEmb(l.Layer):
         half_dim = self.dim // 2
         emb = math.log(10000) / (half_dim - 1)
         emb = tf.math.exp(tf.range(half_dim, dtype=tf.float32) * -emb)
+        emb = tf.cast(emb, dtype=x.dtype)
         emb = x[:, None] * emb[None, :]
         emb = tf.concat([tf.math.sin(emb), tf.math.cos(emb)], axis=-1)
         return emb

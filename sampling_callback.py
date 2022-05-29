@@ -22,6 +22,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
 
     def p_mean_variance(self, x, t, clip_denoised: bool):
         model_output = self.model((x, t))
+        model_output = tf.cast(model_output, dtype=x.dtype)
 
         if self.objective == 'pred_noise':
             x_start = self.predict_start_from_noise(x, t = t, noise = model_output)

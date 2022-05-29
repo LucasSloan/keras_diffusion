@@ -11,11 +11,13 @@ BATCH_SIZE = 16
 flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
 
-# policy = tf.keras.mixed_precision.Policy('mixed_float16')
-# tf.keras.mixed_precision.set_global_policy(policy)
-
 flags.DEFINE_string("checkpoint_dir", None, "Directory to load model state from to resume training.")
 flags.DEFINE_string("experiment_name", None, "Name of the experiment being run.")
+flags.DEFINE_bool("use_mixed_precision", False, "Whether to use float16 mixed precision training.")
+
+if FLAGS.use_mixed_precision:
+    policy = tf.keras.mixed_precision.Policy('mixed_float16')
+    tf.keras.mixed_precision.set_global_policy(policy)
 
 dataset = CifarDataset(BATCH_SIZE).load()
 
