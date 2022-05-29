@@ -35,7 +35,7 @@ class CifarDataset(GaussianDiffusion):
             "/mnt/Bulk Storage/cifar10/32x32/*/*")
         image_files_dataset.shuffle(100000, reshuffle_each_iteration=True)
         dataset = image_files_dataset.map(self.parse_image, num_parallel_calls=tf.data.AUTOTUNE)
-        dataset = dataset.batch(self.batch_size)
+        dataset = dataset.batch(self.batch_size, drop_remainder=True)
         dataset = dataset.map(self.gen_samples)
         dataset = dataset.prefetch(self.batch_size)
         return dataset
