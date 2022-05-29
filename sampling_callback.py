@@ -36,6 +36,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
         return model_mean, posterior_variance, posterior_log_variance
 
+    @tf.function
     def p_sample(self, x, t, clip_denoised=True, repeat_noise=False):
         b, *_ = x.shape
         model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, clip_denoised = clip_denoised)
