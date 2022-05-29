@@ -3,6 +3,7 @@ import time
 import tensorflow as tf
 
 from dataset import CifarDataset
+from sampling_callback import SamplingCallback
 from unet import Unet
 
 BATCH_SIZE = 16
@@ -46,5 +47,6 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                 verbose=1)
 # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
 buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
+sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, image_size=32)
 
-model.fit(dataset, epochs=100, callbacks=[cp_callback, buar_callback])
+model.fit(dataset, epochs=100, callbacks=[cp_callback, buar_callback, sampling_callback])

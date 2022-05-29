@@ -1,22 +1,12 @@
 import math
 
-import tqdm
 import tensorflow as tf
 import tensorflow.keras.layers as l
-
-def unnormalize_to_zero_to_one(t):
-    return (t + 1) * 0.5
 
 def extract(a, t, x_shape):
     b, *_ = t.shape
     out = tf.gather(a, t, axis=-1)
     return tf.reshape(out, shape=(b, *((1,) * (len(x_shape) - 1))))
-
-def noise_like(shape, repeat=False):
-    if repeat:
-        return tf.tile(tf.random.normal(shape=(1, *shape[1:])), (shape[0], *(1,) * (len(shape) - 1)))
-    else:
-        return tf.random.normal(shape=shape)
 
 def cosine_beta_schedule(timesteps, s = 0.008):
     """
@@ -33,11 +23,13 @@ def cosine_beta_schedule(timesteps, s = 0.008):
 class GaussianDiffusion():
     def __init__(
         self,
-        *,
         image_size,
+        objective = 'pred_noise',
         channels = 3,
         timesteps = 1000,
         ):
+        super().__init__()
+        self.objective = objective
         self.channels = channels
         self.image_size = image_size
 
@@ -93,45 +85,6 @@ class GaussianDiffusion():
         posterior_variance = extract(self.posterior_variance, t, x_t.shape)
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
-
-    def p_mean_variance(self, x, t, clip_denoised: bool):
-        model_output = self.denoise_fn(x, t)
-
-        if self.objective == 'pred_noise':
-            x_start = self.predict_start_from_noise(x, t = t, noise = model_output)
-        elif self.objective == 'pred_x0':
-            x_start = model_output
-        else:
-            raise ValueError(f'unknown objective {self.objective}')
-
-        if clip_denoised:
-            x_start = tf.clip_by_value(x_start, -1., 1.)
-
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
-        return model_mean, posterior_variance, posterior_log_variance
-
-    def p_sample(self, x, t, clip_denoised=True, repeat_noise=False):
-        b, *_ = x.shape
-        model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, clip_denoised = clip_denoised)
-        noise = noise_like(x.shape, repeat_noise)
-        # no noise when t == 0
-        nonzero_mask = tf.reshape(1 - (t == 0).float(), (b, *((1,) * (len(x.shape) - 1))))
-        return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
-
-    def p_sample_loop(self, shape):
-        b = shape[0]
-        img = tf.random.normal(shape)
-
-        for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
-            img = self.p_sample(img, tf.fill((b,), i))
-            
-        img = unnormalize_to_zero_to_one(img)
-        return img
-
-    def sample(self, batch_size = 16):
-        image_size = self.image_size
-        channels = self.channels
-        return self.p_sample_loop((batch_size, channels, image_size, image_size))
 
     def interpolate(self, x1, x2, t = None, lam = 0.5):
         pass
