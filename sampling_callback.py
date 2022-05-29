@@ -15,10 +15,11 @@ def noise_like(shape, repeat=False):
         return tf.random.normal(shape=shape)
 
 class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
-    def __init__(self, checkpoint_dir, **kwargs):
+    def __init__(self, checkpoint_dir, run_every = 1, **kwargs):
         super().__init__(**kwargs)
 
         self.checkpoint_dir = checkpoint_dir
+        self.run_every = run_every
 
     def p_mean_variance(self, x, t, clip_denoised: bool):
         model_output = self.model((x, t))
@@ -62,10 +63,14 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         return self.p_sample_loop((batch_size, channels, image_size, image_size))
 
     def on_epoch_end(self, epoch, logs):
+        epoch_one_indexed = epoch + 1
+        if (epoch_one_indexed + 1) % self.run_every != 0:
+            return
+
         imgs = self.sample()
-        os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch}')
+        os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}')
 
         for i, img in enumerate(imgs):
-            tf.keras.utils.save_img(f'{self.checkpoint_dir}/samples/epoch_{epoch}/{i}.jpg', img, data_format='channels_first')
+            tf.keras.utils.save_img(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}/{i}.jpg', img, data_format='channels_first')
 
 
