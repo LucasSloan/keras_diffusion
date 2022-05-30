@@ -67,7 +67,7 @@ class Block(l.Layer):
         return x
 
 class ResnetBlock(l.Layer):
-    def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8):
+    def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8, dropout = 0.):
         super().__init__()
         if time_emb_dim:
             self.mlp = tf.keras.Sequential([
@@ -78,6 +78,7 @@ class ResnetBlock(l.Layer):
             self.mlp = None
 
         self.block1 = Block(dim, dim_out, groups = groups)
+        self.dropout = l.Dropout(dropout)
         self.block2 = Block(dim_out, dim_out, groups = groups)
 
         if dim != dim_out:
@@ -93,6 +94,7 @@ class ResnetBlock(l.Layer):
             scale_shift = tf.split(time_emb, 2, axis = 1)
 
         h = self.block1(x, scale_shift = scale_shift)
+        h = self.dropout(h)
         h = self.block2(h)
 
         if self.res_conv:
@@ -170,7 +172,8 @@ class Unet(l.Layer):
         channels = 3,
         with_time_emb = True,
         resnet_block_groups = 8,
-        learned_variance = False
+        learned_variance = False,
+        dropout = 0.,
     ):
         super().__init__()
 
@@ -210,23 +213,23 @@ class Unet(l.Layer):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append([
-                ResnetBlock(dim_in, dim_out, time_emb_dim=time_dim, groups=resnet_block_groups),
-                ResnetBlock(dim_out, dim_out, time_emb_dim=time_dim, groups=resnet_block_groups),
+                ResnetBlock(dim_in, dim_out, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
+                ResnetBlock(dim_out, dim_out, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
                 Residual(PreNorm(dim_out, LinearAttention(dim_out))),
                 Downsample(dim_out) if not is_last else None,
             ])
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=time_dim, groups=resnet_block_groups)
+        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
         self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=time_dim, groups=resnet_block_groups)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
             self.ups.append([
-                ResnetBlock(dim_out * 2, dim_in, time_emb_dim=time_dim, groups=resnet_block_groups),
-                ResnetBlock(dim_in, dim_in, time_emb_dim=time_dim, groups=resnet_block_groups),
+                ResnetBlock(dim_out * 2, dim_in, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
+                ResnetBlock(dim_in, dim_in, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
                 Residual(PreNorm(dim_in, LinearAttention(dim_in))),
                 Upsample(dim_in) if not is_last else None
             ])
