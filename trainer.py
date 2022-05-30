@@ -43,7 +43,7 @@ elif FLAGS.experiment_name:
 else:
     checkpoint_dir = 'checkpoints/{}'.format(time.strftime("%m_%d_%y-%H_%M"))
 
-checkpoint_path = checkpoint_dir + "/cp-{epoch:04d}.ckpt"
+checkpoint_path = checkpoint_dir + "/checkpoint.ckpt"
 cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                 save_weights_only=True,
                                                 verbose=1)
@@ -51,4 +51,4 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
 buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
 sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=5, image_size=32)
 
-model.fit(dataset, epochs=100, callbacks=[cp_callback, buar_callback, sampling_callback])
+model.fit(dataset, epochs=500, callbacks=[cp_callback, buar_callback, sampling_callback])

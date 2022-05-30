@@ -65,7 +65,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs):
         epoch_one_indexed = epoch + 1
-        if (epoch_one_indexed + 1) % self.run_every != 0:
+        if (epoch_one_indexed) % self.run_every != 0:
             return
 
         imgs = self.sample(self.batch_size)
