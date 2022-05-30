@@ -19,9 +19,9 @@ if FLAGS.use_mixed_precision:
     policy = tf.keras.mixed_precision.Policy('mixed_float16')
     tf.keras.mixed_precision.set_global_policy(policy)
 
-dataset = CifarDataset(BATCH_SIZE).load()
+dataset = CifarDataset(BATCH_SIZE)
 
-noisy = tf.keras.Input(shape=(3, 32, 32), batch_size=BATCH_SIZE, name='noisy')
+noisy = tf.keras.Input(shape=(3, dataset.image_size, dataset.image_size), batch_size=BATCH_SIZE, name='noisy')
 timestep = tf.keras.Input(shape=[], batch_size=BATCH_SIZE, name='timestep')
 
 unet = Unet(dim=64)
@@ -49,6 +49,6 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                 verbose=1)
 # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
 buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=5, image_size=32)
+sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=5, image_size=dataset.image_size)
 
-model.fit(dataset, epochs=500, callbacks=[cp_callback, buar_callback, sampling_callback])
+model.fit(dataset.load(), epochs=500, callbacks=[cp_callback, buar_callback, sampling_callback])
