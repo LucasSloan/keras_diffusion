@@ -7,6 +7,8 @@ from sampling_callback import SamplingCallback
 from unet import Unet
 
 BATCH_SIZE = 128
+EPOCHS = 500
+LEARNING_RATE = 1e-4
 
 flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
@@ -30,7 +32,10 @@ noise = unet(noisy, timestep)
 
 model = tf.keras.Model(inputs=[noisy, timestep], outputs=noise)
 
-model.compile(optimizer=tf.keras.optimizers.Adam(1e-4), loss='mae')
+optimizer = tf.keras.optimizers.Adam(LEARNING_RATE)
+lr_schedule = tf.keras.optimizers.schedules.CosineDecay(LEARNING_RATE, EPOCHS)
+lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_schedule)
+model.compile(optimizer = optimizer, loss='mae')
 
 if FLAGS.checkpoint_dir:
     checkpoint_dir = FLAGS.checkpoint_dir
@@ -51,4 +56,4 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
 buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
 sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=10, image_size=dataset.image_size)
 
-model.fit(dataset.load(), epochs=500, callbacks=[cp_callback, buar_callback, sampling_callback])
+model.fit(dataset.load(), epochs=EPOCHS, callbacks=[cp_callback, buar_callback, sampling_callback, lr_callback])
