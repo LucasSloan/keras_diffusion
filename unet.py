@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 import math
 
 import tensorflow as tf
@@ -9,6 +11,32 @@ from einops import rearrange
 
 def exists(x):
     return x is not None
+
+class TimestepBlock(l.Layer):
+    """
+    Any module where forward() takes timestep embeddings as a second argument.
+    """
+
+    @abstractmethod
+    def call(self, x, emb):
+        """
+        Apply the module to `x` given `emb` timestep embeddings.
+        """
+
+
+class TimestepEmbedSequential(tf.keras.Sequential, TimestepBlock):
+    """
+    A sequential module that passes timestep embeddings to the children that
+    support it as an extra input.
+    """
+
+    def call(self, x, emb):
+        for layer in self.layers:
+            if isinstance(layer, TimestepBlock):
+                x = layer(x, emb)
+            else:
+                x = layer(x)
+        return x
 
 class Residual(l.Layer):
     def __init__(self, fn):
@@ -66,7 +94,7 @@ class Block(l.Layer):
         x = self.act(x)
         return x
 
-class ResnetBlock(l.Layer):
+class ResnetBlock(TimestepBlock):
     def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8, dropout = 0.):
         super().__init__()
         if time_emb_dim:
@@ -169,6 +197,8 @@ class Unet(l.Layer):
         init_dim = None,
         out_dim = None,
         dim_mults=(1, 2, 4, 8),
+        num_res_blocks=3,
+        attention_resolutions=(8, 16),
         channels = 3,
         with_time_emb = True,
         resnet_block_groups = 8,
@@ -180,12 +210,7 @@ class Unet(l.Layer):
         # determine dimensions
         self.channels = channels
         
-        if not init_dim:
-            init_dim = dim // 3 * 2
-        self.init_conv = l.Conv2D(init_dim, 7, padding = 'same', data_format = 'channels_first')
-
-        dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
-        in_out = list(zip(dims[:-1], dims[1:]))
+        self.init_conv = l.Conv2D(dim, 3, padding = 'same', data_format = 'channels_first')
 
         self.resnet_block_groups = resnet_block_groups
 
@@ -207,32 +232,46 @@ class Unet(l.Layer):
 
         self.downs = []
         self.ups = []
-        num_resolutions = len(in_out)
 
-        for ind, (dim_in, dim_out) in enumerate(in_out):
-            is_last = ind >= (num_resolutions - 1)
+        input_block_chans = [dim]
+        ch = dim
+        ds = 1
+        for level, mult in enumerate(dim_mults):
+            for _ in range(num_res_blocks):
+                layers = [
+                    ResnetBlock(ch, mult * dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
+                ]
+                ch = mult * dim
+                if ds in attention_resolutions:
+                    layers.append(Residual(PreNorm(ch, Attention(ch))))
+                self.downs.append(TimestepEmbedSequential(layers))
+                input_block_chans.append(ch)
+            if level != len(dim_mults) - 1:
+                self.downs.append(
+                    TimestepEmbedSequential(Downsample(ch))
+                )
+                input_block_chans.append(ch)
+                ds *= 2
 
-            self.downs.append([
-                ResnetBlock(dim_in, dim_out, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
-                ResnetBlock(dim_out, dim_out, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
-                Residual(PreNorm(dim_out, LinearAttention(dim_out))),
-                Downsample(dim_out) if not is_last else None,
-            ])
+        
+        self.mid_block1 = ResnetBlock(ch, ch, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
+        self.mid_attn = Residual(PreNorm(ch, Attention(ch)))
+        self.mid_block2 = ResnetBlock(ch, ch, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
 
-        mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
-        self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
-
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
-            is_last = ind >= (num_resolutions - 1)
-
-            self.ups.append([
-                ResnetBlock(dim_out * 2, dim_in, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
-                ResnetBlock(dim_in, dim_in, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
-                Residual(PreNorm(dim_in, LinearAttention(dim_in))),
-                Upsample(dim_in) if not is_last else None
-            ])
+        for level, mult in list(enumerate(dim_mults))[::-1]:
+            for i in range(num_res_blocks + 1):
+                layers = [
+                    ResnetBlock(ch + input_block_chans.pop(), mult * dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
+                ]
+                ch = dim * mult
+                if ds in attention_resolutions:
+                    layers.append(
+                        Residual(PreNorm(ch, Attention(ch)))
+                    )
+                if level and i == num_res_blocks:
+                    layers.append(Upsample(ch))
+                    ds //= 2
+                self.ups.append(TimestepEmbedSequential(layers))
 
         if out_dim:
             self.out_dim = out_dim
@@ -245,31 +284,23 @@ class Unet(l.Layer):
         ])
 
     def call(self, x, time):
-        x = self.init_conv(x)
-
         t = self.time_mlp(time) if self.time_mlp else None
 
-        h = []
+        x = self.init_conv(x)
+        hs = [x]
 
-        for block1, block2, attn, downsample in self.downs:
-            x = block1(x, t)
-            x = block2(x, t)
-            x = attn(x)
-            h.append(x)
-            if downsample:
-                x = downsample(x)
+        for block in self.downs:
+            x = block(x, t)
+            hs.append(x)
 
         x = self.mid_block1(x, t)
         x = self.mid_attn(x)
         x = self.mid_block2(x, t)
 
-        for block1, block2, attn, upsample in self.ups:
-            x = tf.concat([x, h.pop()], axis = 1)
-            x = block1(x, t)
-            x = block2(x, t)
-            x = attn(x)
-            if upsample:
-                x = upsample(x)
+        for block in self.ups:
+            h = hs.pop()
+            x = tf.concat([x, h], axis = 1)
+            x = block(x, t)
 
         return self.final_conv(x)
 

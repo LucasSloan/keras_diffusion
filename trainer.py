@@ -6,7 +6,7 @@ from dataset import CifarDataset
 from sampling_callback import SamplingCallback
 from unet import Unet
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 
 flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
@@ -24,7 +24,7 @@ dataset = CifarDataset(BATCH_SIZE)
 noisy = tf.keras.Input(shape=(3, dataset.image_size, dataset.image_size), batch_size=BATCH_SIZE, name='noisy')
 timestep = tf.keras.Input(shape=[], batch_size=BATCH_SIZE, name='timestep')
 
-unet = Unet(dim=64)
+unet = Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2])
 
 noise = unet(noisy, timestep)
 
@@ -49,6 +49,6 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                 verbose=1)
 # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
 buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=5, image_size=dataset.image_size)
+sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=10, image_size=dataset.image_size)
 
 model.fit(dataset.load(), epochs=500, callbacks=[cp_callback, buar_callback, sampling_callback])
