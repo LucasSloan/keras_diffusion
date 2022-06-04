@@ -1,6 +1,7 @@
 
 import os
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 from gaussian_diffusion import GaussianDiffusion
 
@@ -63,12 +64,25 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         channels = self.channels
         return self.p_sample_loop((batch_size, channels, image_size, image_size))
 
+    def _get_optimizer(self):
+        optimizer = self.model.optimizer
+        if type(optimizer).__name__ in ["LossScaleOptimizer", "LossScaleOptimizerV1"]:
+            optimizer = optimizer.inner_optimizer
+
+        return optimizer
+
     def on_epoch_end(self, epoch, logs):
         epoch_one_indexed = epoch + 1
         if (epoch_one_indexed) % self.run_every != 0:
             return
 
+        optimizer = self._get_optimizer()
+        assert isinstance(optimizer, tfa.optimizers.MovingAverage), type(optimizer)
+
+        optimizer.swap_weights()
         imgs = self.sample(self.batch_size)
+        optimizer.swap_weights()
+
         os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}')
 
         for i, img in enumerate(imgs):
