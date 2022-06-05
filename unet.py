@@ -70,7 +70,7 @@ class PreNorm(l.Layer):
     def __init__(self, dim, fn):
         super().__init__()
         self.fn = fn
-        self.norm = l.LayerNormalization()
+        self.norm = l.LayerNormalization(axis = 1)
 
     def call(self, x):
         x = self.norm(x)
@@ -142,7 +142,7 @@ class LinearAttention(l.Layer):
 
         self.to_out = tf.keras.Sequential([
             l.Conv2D(dim, 1, data_format = 'channels_first'),
-            l.LayerNormalization(),
+            l.LayerNormalization(axis = 1),
         ])
 
     def build(self, input_shape):
