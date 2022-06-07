@@ -28,13 +28,14 @@ with strategy.scope():
     dataset = CifarDataset(BATCH_SIZE)
 
     noisy = tf.keras.Input(shape=(3, dataset.image_size, dataset.image_size), batch_size=BATCH_SIZE, name='noisy')
+    cls = tf.keras.Input(shape=[], batch_size=BATCH_SIZE, name='class')
     timestep = tf.keras.Input(shape=[], batch_size=BATCH_SIZE, name='timestep')
 
-    unet = Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2])
+    unet = Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2], num_classes=dataset.num_classes)
 
-    noise = unet(noisy, timestep)
+    noise = unet(noisy, cls, timestep)
 
-    model = tf.keras.Model(inputs=[noisy, timestep], outputs=noise)
+    model = tf.keras.Model(inputs=[noisy, cls, timestep], outputs=noise)
 
     adam = tf.keras.optimizers.Adam(LEARNING_RATE)
     optimizer = tfa.optimizers.MovingAverage(adam, average_decay=0.9999)
@@ -60,6 +61,6 @@ with strategy.scope():
                                                     verbose=1)
     # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
     buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=100, image_size=dataset.image_size)
+    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=100, image_size=dataset.image_size, num_classes=dataset.num_classes)
 
     model.fit(dataset.load(), epochs=EPOCHS, callbacks=[cp_callback, buar_callback, sampling_callback, lr_callback])

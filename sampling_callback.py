@@ -1,5 +1,6 @@
 
 import os
+import math
 import tensorflow as tf
 import tensorflow_addons as tfa
 
@@ -16,15 +17,16 @@ def noise_like(shape, repeat=False):
         return tf.random.normal(shape=shape)
 
 class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
-    def __init__(self, checkpoint_dir, batch_size, run_every = 1, **kwargs):
+    def __init__(self, checkpoint_dir, batch_size, run_every = 1, num_classes = 10, **kwargs):
         super().__init__(**kwargs)
 
         self.checkpoint_dir = checkpoint_dir
         self.batch_size = batch_size
         self.run_every = run_every
+        self.num_classes = num_classes
 
-    def p_mean_variance(self, x, t, clip_denoised: bool):
-        model_output = self.model((x, t))
+    def p_mean_variance(self, x, c, t, clip_denoised: bool):
+        model_output = self.model((x, c, t))
         model_output = tf.cast(model_output, dtype=x.dtype)
 
         if self.objective == 'pred_noise':
@@ -41,28 +43,28 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         return model_mean, posterior_variance, posterior_log_variance
 
     @tf.function
-    def p_sample(self, x, t, clip_denoised=True, repeat_noise=False):
+    def p_sample(self, x, c, t, clip_denoised=True, repeat_noise=False):
         b, *_ = x.shape
-        model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, clip_denoised = clip_denoised)
+        model_mean, _, model_log_variance = self.p_mean_variance(x = x, c = c, t = t, clip_denoised = clip_denoised)
         noise = noise_like(x.shape, repeat_noise)
         # no noise when t == 0
         nonzero_mask = tf.reshape(1 - tf.cast((t == 0), tf.float32), (b, *((1,) * (len(x.shape) - 1))))
         return model_mean + nonzero_mask * tf.math.exp((0.5 * model_log_variance)) * noise
 
-    def p_sample_loop(self, shape):
+    def p_sample_loop(self, c, shape):
         b = shape[0]
         img = tf.random.normal(shape)
 
         for i in reversed(range(0, self.num_timesteps)):
-            img = self.p_sample(img, tf.fill((b,), i))
+            img = self.p_sample(img, c, tf.fill((b,), i))
             
         img = unnormalize_to_zero_to_one(img)
         return img
 
-    def sample(self, batch_size = 16):
+    def sample(self, c, batch_size = 16):
         image_size = self.image_size
         channels = self.channels
-        return self.p_sample_loop((batch_size, channels, image_size, image_size))
+        return self.p_sample_loop(c, (batch_size, channels, image_size, image_size))
 
     def _get_optimizer(self):
         optimizer = self.model.optimizer
@@ -80,7 +82,8 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         assert isinstance(optimizer, tfa.optimizers.MovingAverage), type(optimizer)
 
         optimizer.swap_weights()
-        imgs = self.sample(self.batch_size)
+        c = tf.repeat(tf.range(0, self.num_classes, self.num_classes // 10), math.ceil(self.batch_size / 10))[:self.batch_size]
+        imgs = self.sample(c, self.batch_size)
         optimizer.swap_weights()
 
         os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}')

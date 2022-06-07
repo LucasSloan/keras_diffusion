@@ -1,3 +1,5 @@
+import os
+
 import tensorflow as tf
 
 from gaussian_diffusion import GaussianDiffusion
@@ -8,6 +10,7 @@ class CifarDataset(GaussianDiffusion):
         super().__init__(image_size = 32, **kwargs)
 
         self.batch_size = batch_size
+        self.num_classes = 10
 
     def parse_image(self, filename):
         image_string = tf.io.read_file(filename)
@@ -19,15 +22,20 @@ class CifarDataset(GaussianDiffusion):
         image_nchw = tf.transpose(image_normalized, [2, 0, 1])
         image_nchw.set_shape((3, self.image_size, self.image_size))
 
-        return image_nchw
+        filename = tf.reshape(filename, [1])
+        path_parts = tf.strings.split(filename, os.sep)
+        dir = path_parts.values[-2]
+        int_label = tf.strings.to_number(dir, out_type=tf.int32)
 
-    def gen_samples(self, image):
+        return {'image': image_nchw, 'class': int_label}
+
+    def gen_samples(self, data):
         noise = tf.random.normal([self.batch_size, 3, self.image_size, self.image_size])
         t = tf.random.uniform([self.batch_size], maxval=self.num_timesteps, dtype=tf.int32)
 
-        noisy = self.q_sample(x_start=image, t=t, noise = noise)
+        noisy = self.q_sample(x_start=data['image'], t=t, noise = noise)
 
-        return {'noisy': noisy, 'timestep': t}, noise
+        return {'noisy': noisy, 'class': data['class'], 'timestep': t}, noise
 
 
     def load(self):
@@ -51,6 +59,7 @@ class ImagenetDataset(GaussianDiffusion):
         super().__init__(image_size = 64, **kwargs)
 
         self.batch_size = batch_size
+        self.num_classes = 1000
 
     @tf.function()
     def parse_image(self, tfrecord):
@@ -63,19 +72,18 @@ class ImagenetDataset(GaussianDiffusion):
         image_nchw = tf.transpose(image_normalized, [2, 0, 1])
         image_nchw.set_shape((3, self.image_size, self.image_size))
 
-        # raw_label = proto['label'] - 1
-        # one_hot_label = tf.one_hot(raw_label, 101)
+        raw_label = proto['label'] - 1
 
-        return image_nchw
+        return {'image': image_nchw, 'class': raw_label}
 
     @tf.function()
-    def gen_samples(self, image):
+    def gen_samples(self, data):
         noise = tf.random.normal([self.batch_size, 3, self.image_size, self.image_size])
         t = tf.random.uniform([self.batch_size], maxval=self.num_timesteps, dtype=tf.int32)
 
-        noisy = self.q_sample(x_start=image, t=t, noise = noise)
+        noisy = self.q_sample(x_start=data['image'], t=t, noise = noise)
 
-        return {'noisy': noisy, 'timestep': t}, noise
+        return {'noisy': noisy, 'class': data['class'], 'timestep': t}, noise
 
     def load(self):
         files = tf.data.Dataset.list_files("/mnt/Bulk Storage/imagenet/tfrecords/64x64/*")

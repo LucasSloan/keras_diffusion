@@ -204,6 +204,7 @@ class Unet(l.Layer):
         resnet_block_groups = 8,
         learned_variance = False,
         dropout = 0.,
+        num_classes = None,
     ):
         super().__init__()
 
@@ -227,6 +228,11 @@ class Unet(l.Layer):
         else:
             time_dim = None
             self.time_mlp = None
+
+        if num_classes:
+            self.class_emb = l.Embedding(num_classes, dim * 4)
+        else:
+            self.class_emb = None
 
         # layers
 
@@ -283,8 +289,11 @@ class Unet(l.Layer):
             l.Conv2D(self.out_dim, 1, data_format = 'channels_first'),
         ])
 
-    def call(self, x, time):
+    def call(self, x, c, time):
         t = self.time_mlp(time) if self.time_mlp else None
+
+        if self.class_emb:
+            t = t + self.class_emb(c)
 
         x = self.init_conv(x)
         hs = [x]
