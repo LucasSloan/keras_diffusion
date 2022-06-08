@@ -61,16 +61,16 @@ class SinusoidalPosEmb(l.Layer):
         return emb
 
 def Upsample(dim):
-    return l.Conv2DTranspose(dim, 4, strides = 2, padding = 'same', data_format = 'channels_first')
+    return l.Conv2DTranspose(dim, 4, strides = 2, padding = 'same', data_format = 'channels_last')
 
 def Downsample(dim):
-    return l.Conv2D(dim, 4, strides = 2, padding = 'same', data_format = 'channels_first')
+    return l.Conv2D(dim, 4, strides = 2, padding = 'same', data_format = 'channels_last')
 
 class PreNorm(l.Layer):
     def __init__(self, dim, fn):
         super().__init__()
         self.fn = fn
-        self.norm = l.LayerNormalization(axis = 1)
+        self.norm = l.LayerNormalization(axis = -1)
 
     def call(self, x):
         x = self.norm(x)
@@ -79,8 +79,8 @@ class PreNorm(l.Layer):
 class Block(l.Layer):
     def __init__(self, dim, dim_out, groups = 8):
         super().__init__()
-        self.proj = l.Conv2D(dim_out, 3, padding = 'same', data_format = 'channels_first')
-        self.norm = tfa.layers.GroupNormalization(groups, axis=-3)
+        self.proj = l.Conv2D(dim_out, 3, padding = 'same', data_format = 'channels_last')
+        self.norm = tfa.layers.GroupNormalization(groups, axis=-1)
         self.act = tf.keras.activations.swish
 
     def call(self, x, scale_shift = None):
@@ -110,7 +110,7 @@ class ResnetBlock(TimestepBlock):
         self.block2 = Block(dim_out, dim_out, groups = groups)
 
         if dim != dim_out:
-            self.res_conv = l.Conv2D(dim_out, 1, data_format = 'channels_first')
+            self.res_conv = l.Conv2D(dim_out, 1, data_format = 'channels_last')
         else:
             self.res_conv = None
         
@@ -118,8 +118,8 @@ class ResnetBlock(TimestepBlock):
         scale_shift = None
         if exists(self.mlp) and exists(time_emb):
             time_emb = self.mlp(time_emb)
-            time_emb = rearrange(time_emb, 'b c -> b c 1 1')
-            scale_shift = tf.split(time_emb, 2, axis = 1)
+            time_emb = rearrange(time_emb, 'b c -> b  1 1 c')
+            scale_shift = tf.split(time_emb, 2, axis = -1)
 
         h = self.block1(x, scale_shift = scale_shift)
         h = self.dropout(h)
@@ -170,16 +170,16 @@ class Attention(l.Layer):
         self.scale = dim_head ** -0.5
         self.heads = heads
         hidden_dim = dim_head * heads
-        self.to_qkv = l.Conv2D(hidden_dim * 3, 1, use_bias = False, data_format = 'channels_first')
-        self.to_out = l.Conv2D(dim, 1, data_format = 'channels_first')
+        self.to_qkv = l.Conv2D(hidden_dim * 3, 1, use_bias = False, data_format = 'channels_last')
+        self.to_out = l.Conv2D(dim, 1, data_format = 'channels_last')
 
     def build(self, input_shape):
-        self.h = input_shape[2]
-        self.w = input_shape[3]
+        self.h = input_shape[1]
+        self.w = input_shape[2]
 
     def call(self, x):
-        qkv = tf.split(self.to_qkv(x), 3, axis = 1)
-        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', h = self.heads), qkv)
+        qkv = tf.split(self.to_qkv(x), 3, axis = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b x y (h c) -> b h c (x y)', h = self.heads), qkv)
         q = q * self.scale
 
         sim = tf.einsum('bhdi,bhdj->bhij', q, k)
@@ -187,7 +187,7 @@ class Attention(l.Layer):
         attn = tf.nn.softmax(sim, axis = -1)
 
         out = tf.einsum('bhij,bhdj->bhid', attn, v)
-        out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = self.h, y = self.w)
+        out = rearrange(out, 'b h (x y) d -> b x y (h d)', x = self.h, y = self.w)
         return self.to_out(out)
 
 class Unet(l.Layer):
@@ -211,7 +211,7 @@ class Unet(l.Layer):
         # determine dimensions
         self.channels = channels
         
-        self.init_conv = l.Conv2D(dim, 3, padding = 'same', data_format = 'channels_first')
+        self.init_conv = l.Conv2D(dim, 3, padding = 'same', data_format = 'channels_last')
 
         self.resnet_block_groups = resnet_block_groups
 
@@ -286,7 +286,7 @@ class Unet(l.Layer):
 
         self.final_conv = tf.keras.Sequential([
             ResnetBlock(dim, dim, groups=resnet_block_groups),
-            l.Conv2D(self.out_dim, 1, data_format = 'channels_first'),
+            l.Conv2D(self.out_dim, 1, data_format = 'channels_last'),
         ])
 
     def call(self, x, c, time):
@@ -295,6 +295,7 @@ class Unet(l.Layer):
         if self.class_emb:
             t = t + self.class_emb(c)
 
+        x = tf.transpose(x, [0, 2, 3, 1])
         x = self.init_conv(x)
         hs = [x]
 
@@ -308,8 +309,10 @@ class Unet(l.Layer):
 
         for block in self.ups:
             h = hs.pop()
-            x = tf.concat([x, h], axis = 1)
+            x = tf.concat([x, h], axis = -1)
             x = block(x, t)
 
-        return self.final_conv(x)
+        x = self.final_conv(x)
+        x = tf.transpose(x, [0, 3, 1, 2])
+        return x
 
