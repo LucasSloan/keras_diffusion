@@ -4,7 +4,7 @@ import math
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from gaussian_diffusion import GaussianDiffusion
+from gaussian_diffusion import GaussianDiffusion, cosine_beta_schedule
 
 
 def unnormalize_to_zero_to_one(t):
@@ -17,8 +17,28 @@ def noise_like(shape, repeat=False):
         return tf.random.normal(shape=shape)
 
 class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
-    def __init__(self, checkpoint_dir, batch_size, run_every = 1, num_classes = 10, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, checkpoint_dir, batch_size, run_every = 1, num_classes = 10, timesteps = 1000, resampled_timesteps = None, **kwargs):
+        betas = cosine_beta_schedule(timesteps)
+        if resampled_timesteps:
+            assert timesteps % resampled_timesteps == 0
+
+            use_timesteps = set(range(0, timesteps, timesteps // resampled_timesteps))
+            base_diffusion = GaussianDiffusion(timesteps = timesteps, betas = betas, **kwargs)
+            last_alpha_cumprod = 1.0
+            new_betas = []
+            self.timestamp_map = []
+            for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod):
+                if i in use_timesteps:
+                    new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
+                    last_alpha_cumprod = alpha_cumprod
+                    self.timestamp_map.append(i)
+            betas = tf.stack(new_betas)
+        else:
+            self.timestamp_map = list(range(timesteps))
+
+        self.timestamp_map = tf.constant(self.timestamp_map)
+
+        super().__init__(timesteps = timesteps, betas = betas, **kwargs)
 
         self.checkpoint_dir = checkpoint_dir
         self.batch_size = batch_size
@@ -26,7 +46,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         self.num_classes = num_classes
 
     def p_mean_variance(self, x, c, t, clip_denoised: bool):
-        model_output = self.model((x, c, t))
+        model_output = self.model((x, c, tf.gather(self.timestamp_map, t)))
         model_output = tf.cast(model_output, dtype=x.dtype)
 
         if self.objective == 'pred_noise':

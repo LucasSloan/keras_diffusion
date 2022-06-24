@@ -24,6 +24,7 @@ class GaussianDiffusion():
     def __init__(
         self,
         image_size,
+        betas,
         objective = 'pred_noise',
         channels = 3,
         timesteps = 1000,
@@ -32,8 +33,6 @@ class GaussianDiffusion():
         self.objective = objective
         self.channels = channels
         self.image_size = image_size
-
-        betas = cosine_beta_schedule(timesteps)
 
         alphas = 1. - betas
         alphas_cumprod = tf.math.cumprod(alphas, axis=0)

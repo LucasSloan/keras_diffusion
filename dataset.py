@@ -2,12 +2,13 @@ import os
 
 import tensorflow as tf
 
-from gaussian_diffusion import GaussianDiffusion
+from gaussian_diffusion import GaussianDiffusion, cosine_beta_schedule
 
 
 class CifarDataset(GaussianDiffusion):
-    def __init__(self, batch_size, **kwargs):
-        super().__init__(image_size = 32, **kwargs)
+    def __init__(self, batch_size, timesteps = 1000, **kwargs):
+        betas = cosine_beta_schedule(timesteps)
+        super().__init__(image_size = 32, betas = betas, **kwargs)
 
         self.batch_size = batch_size
         self.num_classes = 10
@@ -55,8 +56,9 @@ image_feature_description = {
 }
 
 class ImagenetDataset(GaussianDiffusion):
-    def __init__(self, batch_size, **kwargs):
-        super().__init__(image_size = 64, **kwargs)
+    def __init__(self, batch_size, timesteps = 1000, **kwargs):
+        betas = cosine_beta_schedule(timesteps)
+        super().__init__(image_size = 64, betas = betas, **kwargs)
 
         self.batch_size = batch_size
         self.num_classes = 1000
