@@ -4,6 +4,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 
 from dataset import CifarDataset
+from model import DiffusionModel
 from sampling_callback import SamplingCallback
 from unet import Unet
 
@@ -27,15 +28,9 @@ strategy = tf.distribute.MirroredStrategy()
 with strategy.scope():
     dataset = CifarDataset(BATCH_SIZE)
 
-    noisy = tf.keras.Input(shape=(3, dataset.image_size, dataset.image_size), batch_size=BATCH_SIZE, name='noisy')
-    cls = tf.keras.Input(shape=[], batch_size=BATCH_SIZE, name='class')
-    timestep = tf.keras.Input(shape=[], batch_size=BATCH_SIZE, name='timestep')
-
     unet = Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2], num_classes=dataset.num_classes)
 
-    noise = unet(noisy, cls, timestep)
-
-    model = tf.keras.Model(inputs=[noisy, cls, timestep], outputs=noise)
+    model = DiffusionModel(dataset.image_size, dataset.betas, unet)
 
     adam = tf.keras.optimizers.Adam(LEARNING_RATE)
     optimizer = tfa.optimizers.MovingAverage(adam, average_decay=0.9999)

@@ -46,7 +46,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         self.num_classes = num_classes
 
     def p_mean_variance(self, x, c, t, clip_denoised: bool):
-        model_output = self.model((x, c, tf.gather(self.timestamp_map, t)))
+        model_output = self.model({'noisy': x, 'class': c, 'timestep': tf.gather(self.timestamp_map, t)})
         model_output = tf.cast(model_output, dtype=x.dtype)
 
         if self.objective == 'pred_noise':
