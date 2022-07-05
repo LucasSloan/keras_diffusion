@@ -4,7 +4,7 @@ import math
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from gaussian_diffusion import GaussianDiffusion, cosine_beta_schedule
+from gaussian_diffusion import GaussianDiffusion, cosine_beta_schedule, extract
 
 
 def unnormalize_to_zero_to_one(t):
@@ -45,27 +45,13 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         self.run_every = run_every
         self.num_classes = num_classes
 
-    def p_mean_variance(self, x, c, t, clip_denoised: bool):
-        model_output = self.model({'noisy': x, 'class': c, 'timestep': tf.gather(self.timestamp_map, t)})
-        model_output = tf.cast(model_output, dtype=x.dtype)
-
-        if self.objective == 'pred_noise':
-            x_start = self.predict_start_from_noise(x, t = t, noise = model_output)
-        elif self.objective == 'pred_x0':
-            x_start = model_output
-        else:
-            raise ValueError(f'unknown objective {self.objective}')
-
-        if clip_denoised:
-            x_start = tf.clip_by_value(x_start, -1., 1.)
-
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
-        return model_mean, posterior_variance, posterior_log_variance
-
     @tf.function
     def p_sample(self, x, c, t, clip_denoised=True, repeat_noise=False):
         b, *_ = x.shape
-        model_mean, _, model_log_variance = self.p_mean_variance(x = x, c = c, t = t, clip_denoised = clip_denoised)
+        model_output = self.model({'noisy': x, 'class': c, 'timestep': tf.gather(self.timestamp_map, t)})
+        model_output = tf.cast(model_output, dtype=x.dtype)
+
+        model_mean, _, model_log_variance = self.p_mean_variance(model_output, x = x, t = t, clip_denoised = clip_denoised)
         noise = noise_like(x.shape, repeat_noise)
         # no noise when t == 0
         nonzero_mask = tf.reshape(1 - tf.cast((t == 0), tf.float32), (b, *((1,) * (len(x.shape) - 1))))

@@ -8,6 +8,46 @@ def extract(a, t, x_shape):
     out = tf.gather(a, t, axis=-1)
     return tf.reshape(out, shape=(b, *((1,) * (len(x_shape) - 1))))
 
+def normal_kl(mean1, logvar1, mean2, logvar2):
+    return 0.5 * (
+        -1.0 
+        + logvar2 
+        - logvar1 
+        + tf.math.exp(logvar1 - logvar2) 
+        + ((mean1 - mean2) ** 2) * tf.math.exp(-logvar2)
+    )
+
+def approx_standard_normal_cdf(x):
+    """
+    A fast approximation of the cumulative distribution function of the
+    standard normal.
+    """
+    return 0.5 * (1.0 + tf.math.tanh(tf.math.sqrt(2.0 / math.pi) * (x + 0.044715 * tf.math.pow(x, 3))))
+
+def discretized_guassian_log_likelihood(x, means, log_scales):
+    assert tf.shape(x) == tf.shape(means) == tf.shape(log_scales)
+
+    centered_x = x - means
+    inv_stdv = tf.math.exp(-log_scales)
+    plus_in = inv_stdv * (centered_x + 1.0 / 255.0)
+    cdf_plus = approx_standard_normal_cdf(plus_in)
+    min_in = inv_stdv * (centered_x - 1.0 / 255.0)
+    cdf_min = approx_standard_normal_cdf(min_in)
+    log_cdf_plus = tf.math.log(tf.clip_by_value(cdf_plus, 1e-12, cdf_plus.dtype.max))
+    log_one_minus_cdf_min = tf.math.log(tf.clip_by_value((1.0 - cdf_min), 1e-12, cdf_min.dtype.max))
+    cdf_delta = cdf_plus - cdf_min
+    log_cdf_delta = tf.math.log(tf.clip_by_value(cdf_delta, 1e-12, cdf_delta.dtype.max))
+
+    log_probs = tf.where(x < 0.999,
+        log_cdf_plus,
+        tf.where(x > 0.999, 
+            log_one_minus_cdf_min,
+            log_cdf_delta
+            )
+    )
+
+    return log_probs
+
 def cosine_beta_schedule(timesteps, s = 0.008):
     """
     cosine schedule
@@ -26,11 +66,13 @@ class GaussianDiffusion():
         image_size,
         betas,
         objective = 'pred_noise',
+        model_var_type = 'fixed',
         channels = 3,
         timesteps = 1000,
         ):
         super().__init__()
         self.objective = objective
+        self.model_var_type = model_var_type
         self.channels = channels
         self.image_size = image_size
 
@@ -93,3 +135,46 @@ class GaussianDiffusion():
             extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
             extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
         )
+
+    def p_mean_variance(self, model_output, x, t, clip_denoised: bool):
+        if self.model_var_type == 'learned_range':
+            B, C = tf.shape(x)[:2]
+            model_output, model_var_values = tf.split(model_output, 2, dim=1)
+
+            min_log = extract(self.posterior_log_variance_clipped, t, x.shape)
+            max_log = extract(tf.math.log(self.betas), t, x.shape)
+
+            frac = (model_var_values + 1) / 2
+
+            model_log_variance = frac * max_log + (1 - frac) * min_log
+            model_variance = tf.math.exp(model_log_variance)
+            return model_output, model_variance, model_log_variance
+
+        if self.objective == 'pred_noise':
+            x_start = self.predict_start_from_noise(x, t = t, noise = model_output)
+        elif self.objective == 'pred_x0':
+            x_start = model_output
+        else:
+            raise ValueError(f'unknown objective {self.objective}')
+
+        if clip_denoised:
+            x_start = tf.clip_by_value(x_start, -1., 1.)
+
+        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
+        return model_mean, posterior_variance, posterior_log_variance
+
+    def vb_terms_bpd(self, model_output, x_start, x_t, t, clip_denoised = True):
+        true_mean, _, true_log_variance_clipped = self.q_posterior(x_start, x_t, t)
+        model_mean, _, model_log_variance_clipped = self.p_mean_variance(model_output, x_t, t, clip_denoised)
+        kl = normal_kl(true_mean, true_log_variance_clipped, model_mean, model_log_variance_clipped)
+        kl = tf.math.reduce_mean(kl, axis=(1, 2, 3)) / math.log(2.0)
+
+        decoder_nll = -discretized_guassian_log_likelihood(
+            x_start, means = model_mean, log_scales = 0.5 * model_log_variance_clipped
+        )
+
+        # At the first timestep return the decoder NLL,
+        # otherwise return KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))
+        output = tf.where((t == 0), decoder_nll, kl)
+
+        return output
