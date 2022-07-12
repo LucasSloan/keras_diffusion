@@ -6,7 +6,8 @@ import tensorflow_addons as tfa
 from dataset import CifarDataset
 from model import DiffusionModel
 from sampling_callback import SamplingCallback
-from unet import Unet
+import unet
+import openai_unet
 
 BATCH_SIZE = 128
 EPOCHS = 1000
@@ -28,7 +29,16 @@ strategy = tf.distribute.MirroredStrategy()
 with strategy.scope():
     dataset = CifarDataset(BATCH_SIZE)
 
-    unet = Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2], num_classes=dataset.num_classes)
+    # unet = unet.Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2], num_classes=dataset.num_classes)
+    unet = openai_unet.Unet(
+        dim = 128, 
+        dim_mults=[1, 2, 2, 2], 
+        num_res_blocks=3, 
+        attention_resolutions=(8, 16), 
+        dropout=0.3, 
+        num_classes=dataset.num_classes, 
+        num_heads=4,
+    )
 
     model = DiffusionModel(dataset.image_size, dataset.betas, unet)
 
