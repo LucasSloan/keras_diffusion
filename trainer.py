@@ -31,13 +31,14 @@ with strategy.scope():
 
     # unet = unet.Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2], num_classes=dataset.num_classes)
     unet = openai_unet.Unet(
-        dim = 128, 
-        dim_mults=[1, 2, 2, 2], 
+        dim = 192, 
+        dim_mults=[1, 2, 3, 4], 
         num_res_blocks=3, 
-        attention_resolutions=(8, 16), 
-        dropout=0.3, 
+        attention_resolutions=(2, 4, 8), 
+        dropout=0.1, 
         num_classes=dataset.num_classes, 
-        num_heads=4,
+        num_heads_channels=64,
+        resblock_updown=True,
     )
 
     model = DiffusionModel(dataset.image_size, dataset.betas, unet)

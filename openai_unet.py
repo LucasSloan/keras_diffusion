@@ -264,6 +264,7 @@ class Unet(l.Layer):
         dropout = 0.,
         num_classes = None,
         num_heads = 1,
+        num_heads_channels = -1,
         resblock_updown = False,
         conv_resample = True,
     ):
@@ -309,7 +310,7 @@ class Unet(l.Layer):
                 ]
                 ch = mult * dim
                 if ds in attention_resolutions:
-                    layers.append(AttentionBlock(ch, num_heads=num_heads))
+                    layers.append(AttentionBlock(ch, num_heads=num_heads, num_head_channels=num_heads_channels))
                 self.downs.append(TimestepEmbedSequential(layers))
                 input_block_chans.append(ch)
             if level != len(dim_mults) - 1:
@@ -335,7 +336,7 @@ class Unet(l.Layer):
             time_dim,
             dropout,
         )
-        self.mid_attn = AttentionBlock(ch, num_heads=num_heads)
+        self.mid_attn = AttentionBlock(ch, num_heads=num_heads, num_head_channels=num_heads_channels)
         self.mid_block2 = ResnetBlock(
             ch,
             time_dim,
@@ -355,7 +356,7 @@ class Unet(l.Layer):
                 ch = dim * mult
                 if ds in attention_resolutions:
                     layers.append(
-                        AttentionBlock(ch, num_heads=num_heads)
+                        AttentionBlock(ch, num_heads=num_heads, num_head_channels=num_heads_channels)
                     )
                 if level and i == num_res_blocks:
                     layers.append(
