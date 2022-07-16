@@ -138,12 +138,15 @@ class ResnetBlock(TimestepBlock):
         return h + res
 
 class Attention(l.Layer):
-    def __init__(self, dim, heads = 4, dim_head = 32):
+    def __init__(self, dim, heads = 1, dim_head = -1):
         super().__init__()
-        self.scale = dim_head ** -0.5
-        self.heads = heads
-        hidden_dim = dim_head * heads
-        self.to_qkv = l.Conv2D(hidden_dim * 3, 1, use_bias = False, data_format = 'channels_last')
+        if dim_head == -1:
+            self.heads = heads
+        else:
+            assert dim % dim_head == 0
+            self.num_heads = dim // dim_head
+        self.scale = dim ** -0.5
+        self.to_qkv = l.Conv2D(dim * 3, 1, use_bias = False, data_format = 'channels_last')
         # initialize to all zeroes, so at initialization, this resblock acts just as an identity, "shrinking" the depth of the network
         self.to_out = l.Conv2D(dim, 1, data_format = 'channels_last', kernel_initializer='zeros')
 
@@ -223,7 +226,7 @@ class Unet(l.Layer):
                 ]
                 ch = mult * dim
                 if ds in attention_resolutions:
-                    layers.append(Residual(PreNorm(ch, Attention(ch))))
+                    layers.append(Residual(PreNorm(ch, Attention(ch, heads = 4))))
                 self.downs.append(TimestepEmbedSequential(layers))
                 input_block_chans.append(ch)
             if level != len(dim_mults) - 1:
@@ -235,7 +238,7 @@ class Unet(l.Layer):
 
         
         self.mid_block1 = ResnetBlock(ch, ch, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
-        self.mid_attn = Residual(PreNorm(ch, Attention(ch)))
+        self.mid_attn = Residual(PreNorm(ch, Attention(ch, heads = 4)))
         self.mid_block2 = ResnetBlock(ch, ch, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
 
         for level, mult in list(enumerate(dim_mults))[::-1]:
@@ -246,7 +249,7 @@ class Unet(l.Layer):
                 ch = dim * mult
                 if ds in attention_resolutions:
                     layers.append(
-                        Residual(PreNorm(ch, Attention(ch)))
+                        Residual(PreNorm(ch, Attention(ch, heads = 4)))
                     )
                 if level and i == num_res_blocks:
                     layers.append(Upsample(ch))
