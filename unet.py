@@ -132,38 +132,6 @@ class ResnetBlock(TimestepBlock):
 
         return h + res
 
-class LinearAttention(l.Layer):
-    def __init__(self, dim, heads = 4, dim_head = 32):
-        super().__init__()
-        self.scale = dim_head ** -0.5
-        self.heads = heads
-        hidden_dim = dim_head * heads
-        self.to_qkv = l.Conv2D(hidden_dim * 3, 1, use_bias = False, data_format = 'channels_first')
-
-        self.to_out = tf.keras.Sequential([
-            l.Conv2D(dim, 1, data_format = 'channels_first'),
-            l.LayerNormalization(axis = 1),
-        ])
-
-    def build(self, input_shape):
-        self.h = input_shape[2]
-        self.w = input_shape[3]
-
-    def call(self, x):
-        h = tf.shape(x)[-2]
-        w = tf.shape(x)[-1]
-        qkv = tf.split(self.to_qkv(x), 3, axis = 1)
-        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', h = self.heads), qkv)
-
-        q = tf.nn.softmax(q, axis = -2)
-        k = tf.nn.softmax(k, axis = -1)
-
-        q = q * self.scale
-        context = tf.einsum('bhdn,bhen->bhde', k, v)
-        out = tf.einsum('bhde,bhdn->bhen', context, q)
-        out = rearrange(out, 'b h c (x y) -> b (h c) x y', h = self.heads, x = self.h, y = self.w)
-        return self.to_out(out)
-        
 class Attention(l.Layer):
     def __init__(self, dim, heads = 4, dim_head = 32):
         super().__init__()
