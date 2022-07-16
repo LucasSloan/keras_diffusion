@@ -26,8 +26,10 @@ if FLAGS.use_mixed_precision:
 
 strategy = tf.distribute.MirroredStrategy()
 
+batch_size = len(tf.config.list_physical_devices('GPU')) * BATCH_SIZE
+
 with strategy.scope():
-    dataset = ImagenetDataset(BATCH_SIZE)
+    dataset = ImagenetDataset(batch_size)
 
     unet = unet.Unet(dim=128, dropout=0.1, dim_mults=[1, 2, 3, 4], attention_resolutions=(4, 8), num_classes=dataset.num_classes)
     # unet = openai_unet.Unet(
@@ -67,6 +69,6 @@ with strategy.scope():
                                                     verbose=1)
     # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
     buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes)
+    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=batch_size, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes)
 
     model.fit(dataset.load(), epochs=EPOCHS, callbacks=[cp_callback, buar_callback, sampling_callback, lr_callback])
