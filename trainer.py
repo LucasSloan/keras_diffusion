@@ -3,14 +3,14 @@ import time
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from dataset import CifarDataset
+from dataset import CifarDataset, ImagenetDataset
 from model import DiffusionModel
 from sampling_callback import SamplingCallback
 import unet
 import openai_unet
 
 BATCH_SIZE = 128
-EPOCHS = 1000
+EPOCHS = 145
 LEARNING_RATE = 1e-4
 
 flags = tf.compat.v1.flags
@@ -27,19 +27,19 @@ if FLAGS.use_mixed_precision:
 strategy = tf.distribute.MirroredStrategy()
 
 with strategy.scope():
-    dataset = CifarDataset(BATCH_SIZE)
+    dataset = ImagenetDataset(BATCH_SIZE)
 
-    # unet = unet.Unet(dim=128, dropout=0.3, dim_mults=[1, 2, 2, 2], num_classes=dataset.num_classes)
-    unet = openai_unet.Unet(
-        dim = 192, 
-        dim_mults=[1, 2, 3, 4], 
-        num_res_blocks=3, 
-        attention_resolutions=(2, 4, 8), 
-        dropout=0.1, 
-        num_classes=dataset.num_classes, 
-        num_heads_channels=64,
-        resblock_updown=True,
-    )
+    unet = unet.Unet(dim=128, dropout=0.1, dim_mults=[1, 2, 3, 4], attention_resolutions=(4, 8), num_classes=dataset.num_classes)
+    # unet = openai_unet.Unet(
+    #     dim = 128, 
+    #     dim_mults=[1, 2, 3, 4], 
+    #     num_res_blocks=2, 
+    #     attention_resolutions=(4,), 
+    #     dropout=0.1, 
+    #     num_classes=dataset.num_classes, 
+    #     num_heads=4,
+    #     resblock_updown=True,
+    # )
 
     model = DiffusionModel(dataset.image_size, dataset.betas, unet)
 
@@ -67,6 +67,6 @@ with strategy.scope():
                                                     verbose=1)
     # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
     buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=100, image_size=dataset.image_size, num_classes=dataset.num_classes)
+    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=BATCH_SIZE, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes)
 
     model.fit(dataset.load(), epochs=EPOCHS, callbacks=[cp_callback, buar_callback, sampling_callback, lr_callback])
