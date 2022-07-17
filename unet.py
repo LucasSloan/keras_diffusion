@@ -60,11 +60,17 @@ class SinusoidalPosEmb(l.Layer):
         emb = tf.concat([tf.math.sin(emb), tf.math.cos(emb)], axis=-1)
         return emb
 
-def Upsample(dim):
-    return l.Conv2DTranspose(dim, 4, strides = 2, padding = 'same', data_format = 'channels_last')
+def Upsample(dim, use_conv = True):
+    if use_conv:
+        return l.Conv2DTranspose(dim, 4, strides = 2, padding = 'same', data_format = 'channels_last')
+    else:
+        return l.UpSampling2D(size=(2, 2), interpolation='nearest', data_format = 'channels_last')
 
-def Downsample(dim):
-    return l.Conv2D(dim, 4, strides = 2, padding = 'same', data_format = 'channels_last')
+def Downsample(dim, use_conv = True):
+    if use_conv:
+        return l.Conv2D(dim, 4, strides = 2, padding = 'same', data_format = 'channels_last')
+    else:
+        return l.AveragePooling2D(pool_size = 2, strides = 2, data_format = 'channels_last')
 
 class PreNorm(l.Layer):
     def __init__(self, dim, fn):
@@ -76,66 +82,153 @@ class PreNorm(l.Layer):
         x = self.norm(x)
         return self.fn(x)
 
-class Block(l.Layer):
-    def __init__(self, dim, dim_out, groups = 8, last_block = False):
-        super().__init__()
-        if last_block:
-            # initialize to all zeroes, so at initialization, this resblock acts just as an identity, "shrinking" the depth of the network
-            kernel_initializer = 'zeros'
-        else:
-            kernel_initializer = 'glorot_uniform'
-        self.proj = l.Conv2D(dim_out, 3, padding = 'same', data_format = 'channels_last', kernel_initializer = kernel_initializer)
-        self.norm = tfa.layers.GroupNormalization(groups, axis=-1)
-        self.act = tf.keras.activations.swish
+# class Block(l.Layer):
+#     def __init__(self, dim, dim_out, groups = 8, last_block = False):
+#         super().__init__()
+#         if last_block:
+#             # initialize to all zeroes, so at initialization, this resblock acts just as an identity, "shrinking" the depth of the network
+#             kernel_initializer = 'zeros'
+#         else:
+#             kernel_initializer = 'glorot_uniform'
+#         self.proj = l.Conv2D(dim_out, 3, padding = 'same', data_format = 'channels_last', kernel_initializer = kernel_initializer)
+#         self.norm = tfa.layers.GroupNormalization(groups, axis=-1)
+#         self.act = tf.keras.activations.swish
 
-    def call(self, x, scale_shift = None):
-        x = self.norm(x)
+#     def call(self, x, scale_shift = None):
+#         x = self.norm(x)
 
-        if scale_shift:
-            scale, shift = scale_shift
-            x = x * (scale + 1) + shift
+#         if scale_shift:
+#             scale, shift = scale_shift
+#             x = x * (scale + 1) + shift
 
-        x = self.act(x)
-        x = self.proj(x)
-        return x
+#         x = self.act(x)
+#         x = self.proj(x)
+#         return x
+
+# class ResnetBlock(TimestepBlock):
+#     def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8, dropout = 0.):
+#         super().__init__()
+#         if time_emb_dim:
+#             self.mlp = tf.keras.Sequential([
+#                 l.Activation(tf.keras.activations.swish),
+#                 l.Dense(dim_out * 2),
+#             ])
+#         else:
+#             self.mlp = None
+
+#         self.block1 = Block(dim, dim_out, groups = groups)
+#         self.dropout = l.Dropout(dropout)
+#         self.block2 = Block(dim_out, dim_out, groups = groups, last_block=True)
+
+#         if dim != dim_out:
+#             self.res_conv = l.Conv2D(dim_out, 1, data_format = 'channels_last')
+#         else:
+#             self.res_conv = None
+        
+#     def call(self, x, time_emb = None):
+#         scale_shift = None
+#         if exists(self.mlp) and exists(time_emb):
+#             time_emb = self.mlp(time_emb)
+#             time_emb = rearrange(time_emb, 'b c -> b  1 1 c')
+#             scale_shift = tf.split(time_emb, 2, axis = -1)
+
+#         h = self.block1(x)
+#         h = self.dropout(h)
+#         h = self.block2(h, scale_shift = scale_shift)
+
+#         if self.res_conv:
+#             res = self.res_conv(x)
+#         else:
+#             res = x
+
+#         return h + res
 
 class ResnetBlock(TimestepBlock):
-    def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8, dropout = 0.):
+    """
+    A residual block that can optionally change the number of channels.
+    :param channels: the number of input channels.
+    :param emb_channels: the number of timestep embedding channels.
+    :param dropout: the rate of dropout.
+    :param out_channels: if specified, the number of out channels.
+    :param use_conv: if True and out_channels is specified, use a spatial
+        convolution instead of a smaller 1x1 convolution to change the
+        channels in the skip connection.
+    :param dims: determines if the signal is 1D, 2D, or 3D.
+    :param use_checkpoint: if True, use gradient checkpointing on this module.
+    :param up: if True, use this block for upsampling.
+    :param down: if True, use this block for downsampling.
+    """
+
+    def __init__(
+        self,
+        channels,
+        emb_channels,
+        dropout,
+        out_channels = None,
+        up = False,
+        down = False,
+    ):
         super().__init__()
-        if time_emb_dim:
-            self.mlp = tf.keras.Sequential([
-                l.Activation(tf.keras.activations.swish),
-                l.Dense(dim_out * 2),
+        self.channels = channels
+        self.emb_channels = emb_channels
+        self.dropout = dropout
+        self.out_channels = out_channels or channels
+
+        self.norm_in = tfa.layers.GroupNormalization(8, axis=-1)
+        self.act_in = l.Activation('swish')
+        self.conv_in = l.Conv2D(self.out_channels, 3, padding = 'same', data_format = 'channels_last')
+
+        self.updown = up or down
+
+        if up:
+            self.h_upd = Upsample(channels, False)
+            self.x_upd = Upsample(channels, False)
+        elif down:
+            self.h_upd = Downsample(channels, False)
+            self.x_upd = Downsample(channels, False)
+
+        self.emb_layers = tf.keras.Sequential([
+                l.Activation('swish'),
+                l.Dense(self.out_channels * 2),
             ])
+
+        self.norm_out = tfa.layers.GroupNormalization(8, axis=-1)
+        self.act_out = l.Activation('swish')
+        self.drop_out = l.Dropout(dropout)
+        # initialize to all zeroes, so at initializations, this resblock acts just as an identity, "shrinking" the depth of the network
+        self.conv_out = l.Conv2D(self.out_channels, 3, padding = 'same', data_format = 'channels_last', kernel_initializer='zeros', bias_initializer='zeros')
+
+        if self.out_channels == channels:
+            self.skip_connection = None
         else:
-            self.mlp = None
+            self.skip_connection = l.Conv2D(self.out_channels, 1, padding = 'valid', data_format = 'channels_last')
 
-        self.block1 = Block(dim, dim_out, groups = groups)
-        self.dropout = l.Dropout(dropout)
-        self.block2 = Block(dim_out, dim_out, groups = groups, last_block=True)
-
-        if dim != dim_out:
-            self.res_conv = l.Conv2D(dim_out, 1, data_format = 'channels_last')
+    def call(self, x, emb):
+        if self.updown:
+            h = self.norm_in(x)
+            h = self.act_in(h)
+            h = self.h_upd(h)
+            x = self.x_upd(x)
+            h = self.conv_in(h)
         else:
-            self.res_conv = None
-        
-    def call(self, x, time_emb = None):
-        scale_shift = None
-        if exists(self.mlp) and exists(time_emb):
-            time_emb = self.mlp(time_emb)
-            time_emb = rearrange(time_emb, 'b c -> b  1 1 c')
-            scale_shift = tf.split(time_emb, 2, axis = -1)
+            h = self.norm_in(x)
+            h = self.act_in(h)
+            h = self.conv_in(h)
 
-        h = self.block1(x)
-        h = self.dropout(h)
-        h = self.block2(h, scale_shift = scale_shift)
+        emb_out = self.emb_layers(emb)
+        emb_out = rearrange(emb_out, 'b c -> b 1 1 c')
+        scale, shift = tf.split(emb_out, 2, axis = -1)
+        h = self.norm_out(h) * (1 + scale) + shift
 
-        if self.res_conv:
-            res = self.res_conv(x)
+        h = self.act_out(h)
+        h = self.drop_out(h)
+        h = self.conv_out(h)
+
+        if self.skip_connection:
+            res = self.skip_connection(x)
         else:
             res = x
-
-        return h + res
+        return res + h
 
 class Attention(l.Layer):
     def __init__(self, dim, heads = 1, dim_head = -1):
@@ -182,6 +275,7 @@ class Unet(l.Layer):
         learned_variance = False,
         dropout = 0.,
         num_classes = None,
+        resblock_updown = False,
     ):
         super().__init__()
 
@@ -222,7 +316,12 @@ class Unet(l.Layer):
         for level, mult in enumerate(dim_mults):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResnetBlock(ch, mult * dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
+                    ResnetBlock(
+                        ch, 
+                        time_dim, 
+                        dropout,
+                        out_channels = mult * dim,
+                    )
                 ]
                 ch = mult * dim
                 if ds in attention_resolutions:
@@ -231,20 +330,43 @@ class Unet(l.Layer):
                 input_block_chans.append(ch)
             if level != len(dim_mults) - 1:
                 self.downs.append(
-                    TimestepEmbedSequential(Downsample(ch))
+                    TimestepEmbedSequential(
+                        ResnetBlock(
+                            ch, 
+                            time_dim, 
+                            dropout,
+                            out_channels = ch,
+                            down = True,
+                        )
+                        if resblock_updown
+                        else Downsample(ch)
+                    )
                 )
                 input_block_chans.append(ch)
                 ds *= 2
 
         
-        self.mid_block1 = ResnetBlock(ch, ch, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
+        self.mid_block1 = ResnetBlock(
+            ch,
+            time_dim,
+            dropout,
+        )
         self.mid_attn = Residual(PreNorm(ch, Attention(ch, heads = 4)))
-        self.mid_block2 = ResnetBlock(ch, ch, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout)
+        self.mid_block2 = ResnetBlock(
+            ch,
+            time_dim,
+            dropout,
+        )
 
         for level, mult in list(enumerate(dim_mults))[::-1]:
             for i in range(num_res_blocks + 1):
                 layers = [
-                    ResnetBlock(ch + input_block_chans.pop(), mult * dim, time_emb_dim=time_dim, groups=resnet_block_groups, dropout=dropout),
+                    ResnetBlock(
+                        ch + input_block_chans.pop(),
+                        time_dim,
+                        dropout,
+                        out_channels = mult * dim,
+                    )
                 ]
                 ch = dim * mult
                 if ds in attention_resolutions:
@@ -252,7 +374,17 @@ class Unet(l.Layer):
                         Residual(PreNorm(ch, Attention(ch, heads = 4)))
                     )
                 if level and i == num_res_blocks:
-                    layers.append(Upsample(ch))
+                    layers.append(
+                        ResnetBlock(
+                            ch,
+                            time_dim,
+                            dropout,
+                            out_channels = ch,
+                            up = True,
+                        )
+                        if resblock_updown
+                        else Upsample(ch)
+                    )
                     ds //= 2
                 self.ups.append(TimestepEmbedSequential(layers))
 
@@ -262,7 +394,6 @@ class Unet(l.Layer):
             self.out_dim = channels * (1 if not learned_variance else 2)
 
         self.final_conv = tf.keras.Sequential([
-            ResnetBlock(dim, dim, groups=resnet_block_groups),
             l.Conv2D(self.out_dim, 1, data_format = 'channels_last'),
         ])
 
