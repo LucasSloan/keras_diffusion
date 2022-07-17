@@ -145,7 +145,7 @@ class Attention(l.Layer):
         else:
             assert dim % dim_head == 0
             self.num_heads = dim // dim_head
-        self.scale = dim ** -0.5
+        self.scale = dim ** -0.25
         self.to_qkv = l.Conv2D(dim * 3, 1, use_bias = False, data_format = 'channels_last')
         # initialize to all zeroes, so at initialization, this resblock acts just as an identity, "shrinking" the depth of the network
         self.to_out = l.Conv2D(dim, 1, data_format = 'channels_last', kernel_initializer='zeros')
@@ -158,9 +158,9 @@ class Attention(l.Layer):
         qkv = tf.split(self.to_qkv(x), 3, axis = -1)
         q, k, v = map(lambda t: rearrange(t, 'b x y (h c) -> b h c (x y)', h = self.heads), qkv)
         q = q * self.scale
+        k = k * self.scale
 
         sim = tf.einsum('bhdi,bhdj->bhij', q, k)
-        sim = sim - tf.stop_gradient(tf.math.reduce_max(sim, axis = -1, keepdims = True))
         attn = tf.nn.softmax(sim, axis = -1)
 
         out = tf.einsum('bhij,bhdj->bhid', attn, v)
