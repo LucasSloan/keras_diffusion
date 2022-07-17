@@ -25,8 +25,6 @@ def approx_standard_normal_cdf(x):
     return 0.5 * (1.0 + tf.math.tanh(tf.math.sqrt(2.0 / math.pi) * (x + 0.044715 * tf.math.pow(x, 3))))
 
 def discretized_guassian_log_likelihood(x, means, log_scales):
-    assert tf.shape(x) == tf.shape(means) == tf.shape(log_scales)
-
     centered_x = x - means
     inv_stdv = tf.math.exp(-log_scales)
     plus_in = inv_stdv * (centered_x + 1.0 / 255.0)
@@ -138,8 +136,7 @@ class GaussianDiffusion():
 
     def p_mean_variance(self, model_output, x, t, clip_denoised: bool):
         if self.model_var_type == 'learned_range':
-            B, C = tf.shape(x)[:2]
-            model_output, model_var_values = tf.split(model_output, 2, dim=1)
+            model_output, model_var_values = tf.split(model_output, 2, axis = 1)
 
             min_log = extract(self.posterior_log_variance_clipped, t, x.shape)
             max_log = extract(tf.math.log(self.betas), t, x.shape)
@@ -172,6 +169,7 @@ class GaussianDiffusion():
         decoder_nll = -discretized_guassian_log_likelihood(
             x_start, means = model_mean, log_scales = 0.5 * model_log_variance_clipped
         )
+        decoder_nll = tf.math.reduce_mean(decoder_nll, axis=(1, 2, 3)) / math.log(2.0)
 
         # At the first timestep return the decoder NLL,
         # otherwise return KL(q(x_{t-1}|x_t,x_0) || p(x_{t-1}|x_t))

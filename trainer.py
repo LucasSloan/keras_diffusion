@@ -49,7 +49,7 @@ with strategy.scope():
     optimizer = tfa.optimizers.MovingAverage(adam, average_decay=0.9999)
     lr_schedule = tf.keras.optimizers.schedules.CosineDecay(LEARNING_RATE, EPOCHS)
     lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_schedule)
-    model.compile(optimizer=optimizer, loss='mae')
+    model.compile(optimizer=optimizer)
 
     if FLAGS.checkpoint_dir:
         checkpoint_dir = FLAGS.checkpoint_dir

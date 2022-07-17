@@ -36,7 +36,7 @@ class CifarDataset(GaussianDiffusion):
 
         noisy = self.q_sample(x_start=data['image'], t=t, noise = noise)
 
-        return {'noisy': noisy, 'class': data['class'], 'timestep': t}, noise
+        return {'original': data['image'], 'noisy': noisy, 'class': data['class'], 'timestep': t}, noise
 
 
     def load(self):
@@ -85,7 +85,7 @@ class ImagenetDataset(GaussianDiffusion):
 
         noisy = self.q_sample(x_start=data['image'], t=t, noise = noise)
 
-        return {'noisy': noisy, 'class': data['class'], 'timestep': t}, noise
+        return {'original': data['image'], 'noisy': noisy, 'class': data['class'], 'timestep': t}, noise
 
     def load(self):
         files = tf.data.Dataset.list_files("/mnt/Bulk Storage/imagenet/tfrecords/64x64/*")
