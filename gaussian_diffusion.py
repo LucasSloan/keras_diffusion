@@ -36,7 +36,7 @@ def discretized_guassian_log_likelihood(x, means, log_scales):
     cdf_delta = cdf_plus - cdf_min
     log_cdf_delta = tf.math.log(tf.clip_by_value(cdf_delta, 1e-12, cdf_delta.dtype.max))
 
-    log_probs = tf.where(x < 0.999,
+    log_probs = tf.where(x < -0.999,
         log_cdf_plus,
         tf.where(x > 0.999, 
             log_one_minus_cdf_min,
@@ -145,7 +145,7 @@ class GaussianDiffusion():
 
             model_log_variance = frac * max_log + (1 - frac) * min_log
             model_variance = tf.math.exp(model_log_variance)
-            return model_output, model_variance, model_log_variance
+            # return model_output, model_variance, model_log_variance
 
         if self.objective == 'pred_noise':
             x_start = self.predict_start_from_noise(x, t = t, noise = model_output)
@@ -157,8 +157,12 @@ class GaussianDiffusion():
         if clip_denoised:
             x_start = tf.clip_by_value(x_start, -1., 1.)
 
-        model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
-        return model_mean, posterior_variance, posterior_log_variance
+        if self.model_var_type == 'learned_range':
+            model_mean, _, _ = self.q_posterior(x_start = x_start, x_t = x, t = t)
+            return model_mean, model_log_variance, model_variance
+        else:
+            model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
+            return model_mean, posterior_variance, posterior_log_variance
 
     def vb_terms_bpd(self, model_output, x_start, x_t, t, clip_denoised = True):
         true_mean, _, true_log_variance_clipped = self.q_posterior(x_start, x_t, t)
