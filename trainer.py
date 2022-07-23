@@ -31,7 +31,7 @@ batch_size = len(tf.config.list_physical_devices('GPU')) * BATCH_SIZE
 with strategy.scope():
     dataset = ImagenetDataset(batch_size)
 
-    unet = unet.Unet(dim=160, num_res_blocks=1, dropout=0.1, dim_mults=[1, 2, 3, 4], attention_resolutions=(4, 8), num_classes=dataset.num_classes)
+    unet = unet.Unet(dim=160, num_res_blocks=1, dropout=0.1, dim_mults=[1, 2, 3, 4], attention_resolutions=(4, 8), num_classes=dataset.num_classes, learned_variance=True)
     # unet = openai_unet.Unet(
     #     dim = 128, 
     #     dim_mults=[1, 2, 3, 4], 
@@ -43,7 +43,7 @@ with strategy.scope():
     #     resblock_updown=True,
     # )
 
-    model = DiffusionModel(dataset.image_size, dataset.betas, unet)
+    model = DiffusionModel(dataset.image_size, dataset.betas, unet, model_var_type='learned_range')
 
     adam = tf.keras.optimizers.Adam(LEARNING_RATE)
     optimizer = tfa.optimizers.MovingAverage(adam, average_decay=0.9999)
@@ -69,6 +69,6 @@ with strategy.scope():
                                                     verbose=1)
     # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
     buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=batch_size, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes)
+    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=batch_size, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes, model_var_type='learned_range')
 
     model.fit(dataset.load(), epochs=EPOCHS, callbacks=[cp_callback, buar_callback, sampling_callback, lr_callback])

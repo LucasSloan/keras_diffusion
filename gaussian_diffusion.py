@@ -106,7 +106,9 @@ class GaussianDiffusion():
 
         # below log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
 
-        self.posterior_log_variance_clipped = make_buffer(tf.math.log(tf.clip_by_value(posterior_variance, clip_value_min=1e-20, clip_value_max=tf.float64.max)))
+        self.posterior_log_variance_clipped = make_buffer(tf.math.log(
+            tf.concat([[self.posterior_variance[1]], self.posterior_variance[1:]], axis=0)
+        ))
         self.posterior_mean_coef1 = make_buffer(betas * tf.math.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))
         self.posterior_mean_coef2 = make_buffer((1. - alphas_cumprod_prev) * tf.math.sqrt(alphas) / (1. - alphas_cumprod))
 
@@ -159,7 +161,7 @@ class GaussianDiffusion():
 
         if self.model_var_type == 'learned_range':
             model_mean, _, _ = self.q_posterior(x_start = x_start, x_t = x, t = t)
-            return model_mean, model_log_variance, model_variance
+            return model_mean, model_variance, model_log_variance
         else:
             model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
             return model_mean, posterior_variance, posterior_log_variance
