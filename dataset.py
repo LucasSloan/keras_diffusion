@@ -20,18 +20,17 @@ class CifarDataset(GaussianDiffusion):
 
         image_normalized = 2.0 * \
             tf.image.convert_image_dtype(image_flipped, tf.float32) - 1.0
-        image_nchw = tf.transpose(image_normalized, [2, 0, 1])
-        image_nchw.set_shape((3, self.image_size, self.image_size))
+        image_normalized.set_shape((self.image_size, self.image_size, 3))
 
         filename = tf.reshape(filename, [1])
         path_parts = tf.strings.split(filename, os.sep)
         dir = path_parts.values[-2]
         int_label = tf.strings.to_number(dir, out_type=tf.int32)
 
-        return {'image': image_nchw, 'class': int_label}
+        return {'image': image_normalized, 'class': int_label}
 
     def gen_samples(self, data):
-        noise = tf.random.normal([self.batch_size, 3, self.image_size, self.image_size])
+        noise = tf.random.normal([self.batch_size, self.image_size, self.image_size, 3])
         t = tf.random.uniform([self.batch_size], maxval=self.num_timesteps, dtype=tf.int32)
 
         noisy = self.q_sample(x_start=data['image'], t=t, noise = noise)
@@ -71,16 +70,15 @@ class ImagenetDataset(GaussianDiffusion):
 
         image_normalized = 2.0 * \
             tf.image.convert_image_dtype(image_flipped, tf.float32) - 1.0
-        image_nchw = tf.transpose(image_normalized, [2, 0, 1])
-        image_nchw.set_shape((3, self.image_size, self.image_size))
+        image_normalized.set_shape((self.image_size, self.image_size, 3))
 
         raw_label = proto['label'] - 1
 
-        return {'image': image_nchw, 'class': raw_label}
+        return {'image': image_normalized, 'class': raw_label}
 
     @tf.function()
     def gen_samples(self, data):
-        noise = tf.random.normal([self.batch_size, 3, self.image_size, self.image_size])
+        noise = tf.random.normal([self.batch_size, self.image_size, self.image_size, 3])
         t = tf.random.uniform([self.batch_size], maxval=self.num_timesteps, dtype=tf.int32)
 
         noisy = self.q_sample(x_start=data['image'], t=t, noise = noise)

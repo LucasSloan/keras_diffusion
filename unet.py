@@ -403,7 +403,6 @@ class Unet(l.Layer):
         if self.class_emb:
             t = t + self.class_emb(c)
 
-        x = tf.transpose(x, [0, 2, 3, 1])
         x = self.init_conv(x)
         hs = [x]
 
@@ -421,6 +420,5 @@ class Unet(l.Layer):
             x = block(x, t)
 
         x = self.final_conv(x)
-        x = tf.transpose(x, [0, 3, 1, 2])
         return x
 

@@ -27,10 +27,10 @@ class DiffusionModel(GaussianDiffusion, tf.keras.Model):
     def compute_loss(self, x = None, y = None, y_pred = None, sample_weight = None):
         y_pred = tf.cast(y_pred, y.dtype)
         if self.model_var_type == 'learned_range':
-            model_output, model_var_values = tf.split(y_pred, 2, axis = 1)
+            model_output, model_var_values = tf.split(y_pred, 2, axis = -1)
             # Learn the variance using the variational bound, but don't let
             # it affect our mean prediction.
-            frozen_out = tf.concat((tf.stop_gradient(model_output), model_var_values), axis = 1)
+            frozen_out = tf.concat((tf.stop_gradient(model_output), model_var_values), axis = -1)
             vlb = self.vb_terms_bpd(frozen_out, x['original'], x['noisy'], x['timestep'])
             # multiply by the overall number of timesteps to estimate the overall VLB,
             # then divide by 1000 to avoid overwhelming the MSE mean loss

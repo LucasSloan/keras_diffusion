@@ -138,7 +138,7 @@ class GaussianDiffusion():
 
     def p_mean_variance(self, model_output, x, t, clip_denoised: bool):
         if self.model_var_type == 'learned_range':
-            model_output, model_var_values = tf.split(model_output, 2, axis = 1)
+            model_output, model_var_values = tf.split(model_output, 2, axis = -1)
 
             min_log = extract(self.posterior_log_variance_clipped, t, x.shape)
             max_log = extract(tf.math.log(self.betas), t, x.shape)

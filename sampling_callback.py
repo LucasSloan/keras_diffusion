@@ -70,7 +70,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
     def sample(self, c, batch_size = 16):
         image_size = self.image_size
         channels = self.channels
-        return self.p_sample_loop(c, (batch_size, channels, image_size, image_size))
+        return self.p_sample_loop(c, (batch_size, image_size, image_size, channels))
 
     def _get_optimizer(self):
         optimizer = self.model.optimizer
@@ -95,6 +95,6 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}')
 
         for i, img in enumerate(imgs):
-            tf.keras.utils.save_img(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}/{i}.jpg', img, data_format='channels_first')
+            tf.keras.utils.save_img(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}/{i}.jpg', img, data_format='channels_last')
 
 
