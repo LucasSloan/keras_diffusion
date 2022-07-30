@@ -95,6 +95,6 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}')
 
         for i, img in enumerate(imgs):
-            tf.keras.utils.save_img(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}/{i}.jpg', img, data_format='channels_last')
+            tf.keras.utils.save_img(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}/{i}.png', img, data_format='channels_last')
 
 
