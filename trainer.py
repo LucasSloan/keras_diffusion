@@ -7,7 +7,6 @@ from dataset import CifarDataset, ImagenetDataset
 from model import DiffusionModel
 from sampling_callback import SamplingCallback
 import unet
-import openai_unet
 
 BATCH_SIZE = 128
 EPOCHS = 145
@@ -32,16 +31,6 @@ with strategy.scope():
     dataset = ImagenetDataset(batch_size)
 
     unet = unet.Unet(dim=160, num_res_blocks=1, dropout=0.1, dim_mults=[1, 2, 3, 4], attention_resolutions=(4, 8), num_classes=dataset.num_classes, learned_variance=True)
-    # unet = openai_unet.Unet(
-    #     dim = 128, 
-    #     dim_mults=[1, 2, 3, 4], 
-    #     num_res_blocks=2, 
-    #     attention_resolutions=(4,), 
-    #     dropout=0.1, 
-    #     num_classes=dataset.num_classes, 
-    #     num_heads=4,
-    #     resblock_updown=True,
-    # )
 
     model = DiffusionModel(dataset.image_size, dataset.betas, unet, model_var_type='learned_range')
 
@@ -53,7 +42,6 @@ with strategy.scope():
 
     if FLAGS.checkpoint_dir:
         checkpoint_dir = FLAGS.checkpoint_dir
-        # print('attempting to load checkpoint from {}'.format(checkpoint_dir))
         
         latest = tf.train.latest_checkpoint(checkpoint_dir)
         model.load_weights(latest)
@@ -67,7 +55,6 @@ with strategy.scope():
                                                     update_weights=False,
                                                     save_weights_only=True,
                                                     verbose=1)
-    # tb_callback = tf.keras.callbacks.TensorBoard(checkpoint_dir, update_freq=1)
     buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
     sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=batch_size, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes, model_var_type='learned_range')
 

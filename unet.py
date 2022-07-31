@@ -82,67 +82,6 @@ class PreNorm(l.Layer):
         x = self.norm(x)
         return self.fn(x)
 
-# class Block(l.Layer):
-#     def __init__(self, dim, dim_out, groups = 8, last_block = False):
-#         super().__init__()
-#         if last_block:
-#             # initialize to all zeroes, so at initialization, this resblock acts just as an identity, "shrinking" the depth of the network
-#             kernel_initializer = 'zeros'
-#         else:
-#             kernel_initializer = 'glorot_uniform'
-#         self.proj = l.Conv2D(dim_out, 3, padding = 'same', data_format = 'channels_last', kernel_initializer = kernel_initializer)
-#         self.norm = tfa.layers.GroupNormalization(groups, axis=-1)
-#         self.act = tf.keras.activations.swish
-
-#     def call(self, x, scale_shift = None):
-#         x = self.norm(x)
-
-#         if scale_shift:
-#             scale, shift = scale_shift
-#             x = x * (scale + 1) + shift
-
-#         x = self.act(x)
-#         x = self.proj(x)
-#         return x
-
-# class ResnetBlock(TimestepBlock):
-#     def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8, dropout = 0.):
-#         super().__init__()
-#         if time_emb_dim:
-#             self.mlp = tf.keras.Sequential([
-#                 l.Activation(tf.keras.activations.swish),
-#                 l.Dense(dim_out * 2),
-#             ])
-#         else:
-#             self.mlp = None
-
-#         self.block1 = Block(dim, dim_out, groups = groups)
-#         self.dropout = l.Dropout(dropout)
-#         self.block2 = Block(dim_out, dim_out, groups = groups, last_block=True)
-
-#         if dim != dim_out:
-#             self.res_conv = l.Conv2D(dim_out, 1, data_format = 'channels_last')
-#         else:
-#             self.res_conv = None
-        
-#     def call(self, x, time_emb = None):
-#         scale_shift = None
-#         if exists(self.mlp) and exists(time_emb):
-#             time_emb = self.mlp(time_emb)
-#             time_emb = rearrange(time_emb, 'b c -> b  1 1 c')
-#             scale_shift = tf.split(time_emb, 2, axis = -1)
-
-#         h = self.block1(x)
-#         h = self.dropout(h)
-#         h = self.block2(h, scale_shift = scale_shift)
-
-#         if self.res_conv:
-#             res = self.res_conv(x)
-#         else:
-#             res = x
-
-#         return h + res
-
 class ResnetBlock(TimestepBlock):
     """
     A residual block that can optionally change the number of channels.
