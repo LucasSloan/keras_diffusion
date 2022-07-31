@@ -17,7 +17,7 @@ def noise_like(shape, repeat=False):
         return tf.random.normal(shape=shape)
 
 class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
-    def __init__(self, checkpoint_dir, batch_size, run_every = 1, num_classes = 10, timesteps = 1000, resampled_timesteps = None, **kwargs):
+    def __init__(self, checkpoint_dir, batch_size, sample_classes, run_every = 1, timesteps = 1000, resampled_timesteps = None, **kwargs):
         betas = cosine_beta_schedule(timesteps)
         if resampled_timesteps:
             assert timesteps % resampled_timesteps == 0
@@ -43,7 +43,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         self.checkpoint_dir = checkpoint_dir
         self.batch_size = batch_size
         self.run_every = run_every
-        self.num_classes = num_classes
+        self.sample_classes = sample_classes
 
     @tf.function
     def p_sample(self, x, c, t, clip_denoised=True, repeat_noise=False):
@@ -88,8 +88,7 @@ class SamplingCallback(GaussianDiffusion, tf.keras.callbacks.Callback):
         assert isinstance(optimizer, tfa.optimizers.MovingAverage), type(optimizer)
 
         optimizer.swap_weights()
-        c = tf.repeat(tf.range(0, self.num_classes, self.num_classes // 10), math.ceil(self.batch_size / 10))[:self.batch_size]
-        imgs = self.sample(c, self.batch_size)
+        imgs = self.sample(self.sample_classes, self.batch_size)
         optimizer.swap_weights()
 
         os.makedirs(f'{self.checkpoint_dir}/samples/epoch_{epoch_one_indexed}')

@@ -54,6 +54,6 @@ with strategy.scope():
                                                     save_weights_only=True,
                                                     verbose=1)
     buar_callback = tf.keras.callbacks.experimental.BackupAndRestore(checkpoint_dir)
-    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=batch_size, run_every=5, image_size=dataset.image_size, num_classes=dataset.num_classes, model_var_type='learned_range')
+    sampling_callback = SamplingCallback(checkpoint_dir=checkpoint_dir, batch_size=batch_size, sample_classes=dataset.get_sample_classes(), run_every=5, image_size=dataset.image_size, model_var_type='learned_range')
 
     model.fit(dataset.load(), epochs=EPOCHS, callbacks=[cp_callback, buar_callback, sampling_callback])

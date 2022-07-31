@@ -1,6 +1,9 @@
+import math
 import os
 
 import tensorflow as tf
+from cifar10_classes import CIFAR10_CLASSES
+from imagenet_classes import IMAGENET_CLASSES
 
 from gaussian_diffusion import GaussianDiffusion, cosine_beta_schedule
 
@@ -12,6 +15,10 @@ class CifarDataset(GaussianDiffusion):
 
         self.batch_size = batch_size
         self.num_classes = 10
+        self.class_names = CIFAR10_CLASSES
+
+    def get_sample_classes(self):
+        return tf.repeat(tf.range(0, self.num_classes, self.num_classes // 10), math.ceil(self.batch_size / 10))[:self.batch_size]
 
     def parse_image(self, filename):
         image_string = tf.io.read_file(filename)
@@ -61,6 +68,12 @@ class ImagenetDataset(GaussianDiffusion):
 
         self.batch_size = batch_size
         self.num_classes = 1000
+        self.class_names = IMAGENET_CLASSES
+
+    def get_sample_classes(self):
+        classes = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 281, 812, 786, 996, 386, 847]
+        assert self.batch_size % len(classes) == 0
+        return tf.repeat(classes, self.batch_size // len(classes))
 
     @tf.function()
     def parse_image(self, tfrecord):
