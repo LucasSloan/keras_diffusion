@@ -176,7 +176,7 @@ class Attention(l.Layer):
             self.heads = heads
         else:
             assert dim % dim_head == 0
-            self.num_heads = dim // dim_head
+            self.heads = dim // dim_head
         self.scale = dim ** -0.25
         self.to_qkv = l.Conv2D(dim * 3, 1, use_bias = False, data_format = 'channels_last')
         # initialize to all zeroes, so at initialization, this resblock acts just as an identity, "shrinking" the depth of the network
@@ -264,7 +264,7 @@ class Unet(l.Layer):
                 ]
                 ch = mult * dim
                 if ds in attention_resolutions:
-                    layers.append(Residual(PreNorm(ch, Attention(ch, heads = 4))))
+                    layers.append(Residual(PreNorm(ch, Attention(ch, dim_head = 64))))
                 self.downs.append(TimestepEmbedSequential(layers))
                 input_block_chans.append(ch)
             if level != len(dim_mults) - 1:
@@ -290,7 +290,7 @@ class Unet(l.Layer):
             time_dim,
             dropout,
         )
-        self.mid_attn = Residual(PreNorm(ch, Attention(ch, heads = 4)))
+        self.mid_attn = Residual(PreNorm(ch, Attention(ch, dim_head = 64)))
         self.mid_block2 = ResnetBlock(
             ch,
             time_dim,
@@ -310,7 +310,7 @@ class Unet(l.Layer):
                 ch = dim * mult
                 if ds in attention_resolutions:
                     layers.append(
-                        Residual(PreNorm(ch, Attention(ch, heads = 4)))
+                        Residual(PreNorm(ch, Attention(ch, dim_head = 64)))
                     )
                 if level and i == num_res_blocks:
                     layers.append(
