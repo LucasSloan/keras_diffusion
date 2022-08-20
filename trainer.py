@@ -28,9 +28,9 @@ strategy = tf.distribute.MirroredStrategy()
 batch_size = len(tf.config.list_physical_devices('GPU')) * BATCH_SIZE
 
 with strategy.scope():
-    dataset = ImagenetDataset(batch_size)
+    dataset = CifarDataset(batch_size)
 
-    unet = unet.Unet(dim=192, num_res_blocks=1, dropout=0.0, dim_mults=[1, 2, 3, 4], attention_resolutions=(2, 4, 8), resblock_updown=True, num_classes=dataset.num_classes, learned_variance=True)
+    unet = unet.Unet(dim=128, num_res_blocks=2, dropout=0.3, dim_mults=[1, 2, 2, 2], attention_resolutions=(2, 4), resblock_updown=True, num_classes=dataset.num_classes, learned_variance=True)
 
     model = DiffusionModel(dataset.image_size, dataset.betas, unet, model_var_type='learned_range')
 
